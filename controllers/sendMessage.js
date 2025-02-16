@@ -53,13 +53,13 @@ router.post("/api/sendMessage", async (req, res) => {
 
         if (tableExists) {
           console.log("Таблица существует, вставляю данные...");
-
+          console.log("res", results);
           const messageData = {
             to: msg.to,
             from: "79198670001", // или другое значение
             item: results[0].result.item || "3A05B1DBFE70E35181EE", // пример значения
             text: msg.text,
-            time: Date.now() * 1000, // Пример времени
+            time: results[0].result.timestamp, // Пример времени
             source: "whatsapp",
             thread: unid,
             content: msg.content,
@@ -72,7 +72,7 @@ router.post("/api/sendMessage", async (req, res) => {
           try {
             const [insertResult] = await pool.query(insertChat, [
               item,
-              Date.now(),
+              results[0].result.timestamp,
               JSON.stringify(messageData),
               "s",
             ]);

@@ -10,6 +10,7 @@ const getChatMessages = require("./controllers/getChatsMessages");
 const sendMessage = require("./controllers/sendMessage");
 const createUserRoutes = require("./controllers/getChats");
 const selectInfoFromDb = require("./controllers/infoFromDb");
+const dataRouter = require("./controllers/intoMessageFromDb");
 app.use(cors());
 app.use(express.json());
 app.use(apiRoutes);
@@ -17,6 +18,7 @@ app.use(getChatMessages);
 app.use(sendMessage);
 app.use(createUserRoutes);
 app.use(selectInfoFromDb);
+app.use("/api", dataRouter);
 
 // app.post("/api/:method", async (req, res) => {
 //   const { source, token, login, msg, to, unid } = req.body;

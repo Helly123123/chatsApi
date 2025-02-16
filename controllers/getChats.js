@@ -70,8 +70,8 @@ router.post("/api/getChats", async (req, res) => {
           return res.status(200).json({
             message: "Чаты успешно добавлены.",
             data: {
-              chats: response.data,
-            }, // Отправляем данные, полученные от API
+              chats: response.data.data.chats, // Отправляем данные чатов в формате JSON
+            },
           });
         } catch (error) {
           console.log("Не удалось вставить чаты. Ошибка:", error.message);
@@ -83,11 +83,10 @@ router.post("/api/getChats", async (req, res) => {
       }
     } else {
       console.log("Чаты найдены в базе данных:", results); // ЛОГ 11: Чаты найдены
-      console.log("Чаты найдены в базе данных:", results); // ЛОГ 11: Чаты найдены
       return res.status(200).json({
         message: "Чаты уже существуют.",
         data: {
-          chats: results.map((chat) => chat.data), // Извлекаем только поле data из каждого объекта
+          chats: results.map((chat) => JSON.parse(chat.data)), // Извлекаем и парсим данные из базы
         },
       });
     }
