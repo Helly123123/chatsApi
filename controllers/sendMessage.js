@@ -19,7 +19,7 @@ router.post("/api/sendMessage", async (req, res) => {
       }
     );
 
-    console.log("Ответ от API:", response.data); // Логируем ответ от API
+    console.log("Ответ от API:", response.data.data.results); // Логируем ответ от API
 
     const { status } = response.data.data;
     const results = response.data.data.results;
@@ -73,7 +73,12 @@ router.post("/api/sendMessage", async (req, res) => {
             const [insertResult] = await pool.query(insertChat, [
               item,
               results[0].result.timestamp,
-              JSON.stringify(messageData),
+              JSON.stringify({
+                ...messageData,
+                state: false,
+                reaction: "",
+                send: false,
+              }),
               "s",
             ]);
             console.log("Данные успешно вставлены:", insertResult);

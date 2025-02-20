@@ -1,6 +1,12 @@
 const express = require("express");
 const { pool } = require("../db");
 const axios = require("axios"); // Импортируем axios для выполнения HTTP-запросов
+const app = express();
+app.use(express.json());
+
+const { sendSSE } = require("../routes/sse");
+
+// Функция для отправки сообщений клиентам SSE
 
 const webhook = async (req, res) => {
   const { body } = req;
@@ -22,11 +28,19 @@ const webhook = async (req, res) => {
   } = body;
 
   // Проверка типа хука
-  if (hook_type !== "message") {
-    console.log("Тип хука не message, выходим.");
-    return res.status(200).send("OK");
+  if (hook_type === "message") {
+    await handleMessageSendStatusHook(body);
+    await handleMessageHook(body, thread, item, time, to);
+  } else if (hook_type === "message_status") {
+    await handleMessageStatusHook(body);
+  } else {
+    console.log("Тип хука не поддерживается, выходим.");
   }
 
+  return res.status(200).send("OK");
+};
+
+const handleMessageHook = async (body, thread, item, time, to) => {
   const unid = thread; // Используем thread как уникальный идентификатор чата
   const chatCheckQuery = `SELECT * FROM chats WHERE uniq = ?`;
 
@@ -37,115 +51,191 @@ const webhook = async (req, res) => {
 
     const messageData = {
       to,
-      from,
+      from: body.from,
       item: item || "3A05B1DBFE70E35181EE",
-      text,
+      text: body.text,
       time,
       source: "whatsapp",
       thread: unid,
-      content,
+      content: body.content,
       replyTo,
-      outgoing,
+      outgoing: body.outgoing,
       w: "h", // Добавляем значение 'h' в поле 'w'
     };
 
+    const chatsData = {
+      phone: to,
+      timestamp: time,
+    };
+
+    // Обработка существующего чата
     if (chatExists.length > 0) {
-      // Если чат существует, обновляем сообщение
-      console.log(`Чат ${unid} существует. Вставляем данные...`);
-      const insertMessage = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
-      console.log(`Вставка данных в таблицу ${unid}:`, messageData);
-      await pool.query(insertMessage, [
-        item,
-        time,
-        JSON.stringify(messageData),
-        messageData.w,
-      ]);
-      console.log("Данные сообщения успешно вставлены.");
-
-      // Обновляем поле 'u' в таблице chats
-      const updateChatFieldU = `UPDATE chats SET u = ? WHERE uniq = ?`;
-      await pool.query(updateChatFieldU, ["h", unid]);
-      console.log("Поле 'u' успешно обновлено на 'h' для чата:", unid);
+      console.log(`Чат ${unid} существует. Проверяем существование таблицы...`);
+      await handleExistingChat(unid, messageData, chatsData, time);
     } else {
-      // Если чата нет, создаем новый чат с данными из вебхука
       console.log(`Чат ${unid} не существует. Создаем новый чат...`);
-      const newChatData = {
-        uniq: unid,
-        timestamp: time,
-        data: JSON.stringify(messageData), // Создаем новый чат с данными из вебхука
-        w: "h", // Устанавливаем 'h' в поле 'w'
-      };
-
-      // Вставляем новый чат в таблицу
-      const insertChat = `INSERT INTO chats (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
-      await pool.query(insertChat, [
-        newChatData.uniq,
-        newChatData.timestamp,
-        newChatData.data,
-        newChatData.w,
-      ]);
-      console.log("Новый чат успешно добавлен с данными из вебхука.");
-
-      // Теперь делаем запрос к API для получения дополнительной информации
-      console.log(`Запрашиваем информацию о пользователе...`);
-      const apiUrl = "https://b2288.apitter.com/instances/getUserInfo";
-      const apiHeaders = {
-        Authorization: "Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5",
-      };
-      const apiBody = {
-        source: "whatsapp",
-        login: "helly",
-        to, // Используем переменную `to` из вебхука
-      };
-
-      try {
-        const response = await axios.post(apiUrl, apiBody, {
-          headers: apiHeaders,
-        });
-        console.log("Ответ от API:", response.data);
-
-        // Если API возвращает данные, обновляем информацию о чате
-        if (response.data.ok === true) {
-          const userInfo = response.data.data;
-
-          // Полностью заменяем данные чата на данные из API
-          const updatedChatData = {
-            uniq: unid,
-            timestamp: time,
-            data: JSON.stringify({
-              ...messageData,
-              userInfo, // Вставляем информацию о пользователе
-            }),
-          };
-
-          // Обновляем данные чата в таблице
-          const updateChat = `UPDATE chats SET timestamp = ?, data = ?, u = ? WHERE uniq = ?`;
-          await pool.query(updateChat, [
-            updatedChatData.timestamp,
-            updatedChatData.data,
-            "h", // Устанавливаем 'h' в поле 'u'
-            updatedChatData.uniq,
-          ]);
-          console.log("Данные чата успешно обновлены с информацией из API.");
-        } else {
-          console.log("Ошибка при получении данных от API:", response.data);
-          return res
-            .status(400)
-            .json({ error: "Не удалось получить данные о пользователе." });
-        }
-      } catch (apiError) {
-        console.error("Ошибка при запросе к API:", apiError);
-        return res
-          .status(500)
-          .json({ error: "Ошибка при получении информации о пользователе" });
-      }
+      await handleNewChat(unid, messageData, chatsData, time);
     }
-
-    return res.status(200).json({ message: "Вебхук получен и обработан." });
   } catch (error) {
-    console.error("Ошибка при обработке вебхука:", error);
-    return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+    console.error("Ошибка при обработке хука сообщения:", error);
+    throw error; // Пробрасываем ошибку для обработки в основном блоке
   }
 };
 
+const handleExistingChat = async (unid, messageData, chatsData, time) => {
+  const insertChatQuery = `
+  INSERT INTO chats (uniq, timestamp, data, w, u)
+  VALUES (?, ?, ?, ?) 
+  ON DUPLICATE KEY UPDATE 
+  timestamp = ?, data = ?, w = ?`;
+
+  await pool.query(insertChatQuery, [
+    unid,
+    time,
+    JSON.stringify(chatsData),
+    "c", // Записываем 'c' в поле 'w'
+  ]);
+  console.log("Данные чата успешно вставлены или обновлены.");
+
+  const tableCheckQuery = `
+    SELECT COUNT(*) AS table_exists
+    FROM information_schema.tables
+    WHERE table_schema = ? AND table_name = ?`;
+  const [tableExists] = await pool.query(tableCheckQuery, ["chats", unid]);
+
+  if (tableExists[0].table_exists > 0) {
+    console.log(`Таблица ${unid} существует. Вставляем данные...`);
+    const insertMessage = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
+    await pool.query(insertMessage, [
+      messageData.item,
+      time,
+      JSON.stringify(messageData),
+      messageData.w,
+    ]);
+    console.log("Данные сообщения успешно вставлены.");
+
+    // Обновляем поле 'u' в таблице chats
+    const updateChatFieldU = `UPDATE chats SET u = ? WHERE uniq = ?`;
+    await pool.query(updateChatFieldU, ["h", unid]);
+    console.log("Поле 'u' успешно обновлено на 'h' для чата:", unid);
+  } else {
+    await createChatTableAndInsert(unid, messageData);
+  }
+};
+
+const handleNewChat = async (unid, messageData, chatsData, time) => {
+  const tableCheckQuery = `
+    SELECT COUNT(*) AS table_exists
+    FROM information_schema.tables
+    WHERE table_schema = ? AND table_name = ?`;
+  const [tableExists] = await pool.query(tableCheckQuery, ["chats", unid]);
+
+  if (tableExists[0].table_exists > 0) {
+    console.log(`Таблица ${unid} существует. Вставляем данные...`);
+    const insertMessage = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
+    await pool.query(insertMessage, [
+      messageData.item,
+      time,
+      JSON.stringify(messageData),
+      messageData.w,
+    ]);
+    console.log("Данные сообщения успешно вставлены.");
+
+    // Обновляем поле 'u' в таблице chats
+    const updateChatFieldU = `UPDATE chats SET u = ? WHERE uniq = ?`;
+    await pool.query(updateChatFieldU, ["h", unid]);
+    console.log("Поле 'u' успешно обновлено на 'h' для чата:", unid);
+  } else {
+    await createChatTableAndInsert(unid, messageData);
+  }
+};
+
+const createChatTableAndInsert = async (unid, messageData) => {
+  console.log(`Таблица ${unid} не существует. Создаем новую таблицу...`);
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS \`${unid}\` (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      uniq VARCHAR(255) NOT NULL UNIQUE,
+      timestamp VARCHAR(255) NOT NULL,
+      data JSON NOT NULL,
+      w VARCHAR(255),
+      u VARCHAR(255)
+    );`;
+  await pool.query(createTableQuery);
+  console.log(`Таблица ${unid} была создана.`);
+
+  // Вставляем сообщение в таблицу
+  const insertMessage = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
+  await pool.query(insertMessage, [
+    messageData.item,
+    messageData.time,
+    JSON.stringify(messageData),
+    messageData.w,
+  ]);
+  console.log("Данные сообщения успешно вставлены.");
+};
+
+const handleMessageStatusHook = async (body) => {
+  const { thread, status, time, hook_type, content, item } = body;
+
+  // Создаем объект сообщения со статусом
+  const statusMessage = {
+    thread,
+    status,
+    time,
+    item,
+    hook_type,
+    content,
+  };
+
+  // Логируем статус сообщения
+  console.log(
+    "Получен статус сообщения:",
+    JSON.stringify(statusMessage, null, 2)
+  );
+
+  sendSSE(statusMessage);
+};
+
+const handleMessageSendStatusHook = async (body) => {
+  const {
+    from,
+    to,
+    thread,
+    text,
+    outgoing,
+    replyTo,
+    time,
+    hook_type,
+    content,
+    item,
+  } = body;
+
+  // Проверяем, что тип хука - это сообщение
+  if (hook_type === "message") {
+    // Создаем объект сообщения
+    const message = {
+      from,
+      to,
+      time,
+      text,
+      thread,
+      outgoing,
+      replyTo,
+      content,
+      hook_type,
+      item,
+    };
+
+    // Логируем статус сообщения
+    console.log("Получено сообщение:", JSON.stringify(message, null, 2));
+
+    // Отправляем данные через SSE
+    sendSSE(message);
+  } else {
+    console.log("Тип хука не соответствует 'message', игнорируем.");
+  }
+};
+
+// Экспортируем функцию вебхука
 module.exports = webhook;

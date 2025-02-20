@@ -5,8 +5,8 @@ const mysql = require("mysql2");
 const pool = mysql.createPool({
   host: "localhost",
   user: "root",
-  password: "68b329da9893e34099c7",
-  // password: "",
+  // password: "68b329da9893e34099c7",
+  password: "root",
   database: "chats",
   port: 3306,
 });
@@ -19,7 +19,6 @@ const checkAndCreateDatabase = () => {
     }
     console.log("Подключено к MySQL");
 
-    // Проверка существования базы данных
     connection.query(`CREATE DATABASE IF NOT EXISTS recored`, (err) => {
       if (err) {
         console.error("Ошибка при создании базы данных: " + err.stack);
@@ -75,7 +74,7 @@ const checkDb = (method, tableName) => {
         if (err) {
           return reject(err);
         }
-        console.log(results);
+
         resolve(results);
       });
     } else if (method === "sendMessage") {
@@ -93,7 +92,6 @@ const checkDb = (method, tableName) => {
             return reject(err); // Возвращаем ошибку
           } else {
             resolve(results);
-            console.log(results);
           }
         }
       );
