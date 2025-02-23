@@ -48,7 +48,7 @@ const handleMessageHook = async (body, thread, item, time, to) => {
     // Проверяем, существует ли чат в таблице chats
     const [chatExists] = await pool.query(chatCheckQuery, [unid]);
     console.log("Результат проверки существования чата:", chatExists);
-
+    console.log("а");
     const messageData = {
       to,
       from: body.from,
@@ -58,7 +58,6 @@ const handleMessageHook = async (body, thread, item, time, to) => {
       source: "whatsapp",
       thread: unid,
       content: body.content,
-      replyTo,
       outgoing: body.outgoing,
       w: "h", // Добавляем значение 'h' в поле 'w'
     };
@@ -84,16 +83,19 @@ const handleMessageHook = async (body, thread, item, time, to) => {
 
 const handleExistingChat = async (unid, messageData, chatsData, time) => {
   const insertChatQuery = `
-  INSERT INTO chats (uniq, timestamp, data, w, u)
-  VALUES (?, ?, ?, ?) 
-  ON DUPLICATE KEY UPDATE 
+  INSERT INTO chats (uniq, timestamp, data, w)
+  VALUES (?, ?, ?, ?)
+  ON DUPLICATE KEY UPDATE
   timestamp = ?, data = ?, w = ?`;
 
   await pool.query(insertChatQuery, [
-    unid,
-    time,
-    JSON.stringify(chatsData),
-    "c", // Записываем 'c' в поле 'w'
+    unid, // 1. uniq
+    time, // 2. timestamp
+    JSON.stringify(chatsData), // 3. data
+    "c", // 4. w
+    time, // 5. timestamp (для обновления)
+    JSON.stringify(chatsData), // 6. data (для обновления)
+    "c", // 7. w (для обновления)
   ]);
   console.log("Данные чата успешно вставлены или обновлены.");
 
@@ -213,7 +215,6 @@ const handleMessageSendStatusHook = async (body) => {
 
   // Проверяем, что тип хука - это сообщение
   if (hook_type === "message") {
-    // Создаем объект сообщения
     const message = {
       from,
       to,

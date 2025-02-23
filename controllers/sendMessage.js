@@ -72,6 +72,7 @@ router.post("/api/sendMessage", async (req, res) => {
 
           // Вставка данных в таблицу
           const insertChat = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
+
           try {
             const [insertResult] = await pool.query(insertChat, [
               item,
