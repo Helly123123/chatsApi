@@ -33,9 +33,42 @@ router.post("/api/getChats", async (req, res) => {
             .json({ error: "Данные чатов не являются массивом." });
         }
 
+        // Создаем массив промисов для получения аватарок
+        const avatarPromises = chats.map(async (chat) => {
+          const to = chat.phone; // Предполагаем, что номер телефона находится в объекте чата
+          console.log(to);
+          const userInfoResponse = await axios.post(
+            "https://b2288.apitter.com/instances/getUserInfo",
+            { source, login, to },
+            {
+              headers: {
+                Authorization: `Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5`,
+              },
+            }
+          );
+
+          // Проверяем, получили ли мы данные о пользователе
+          if (userInfoResponse.data.ok) {
+            console.log(userInfoResponse.data.data.pictureUrl);
+            return {
+              ...chat,
+              avatar: userInfoResponse.data.data.pictureUrl, // Предполагаем, что аватарка находится в этом поле
+            };
+          } else {
+            console.error(
+              "Ошибка при получении информации о пользователе:",
+              userInfoResponse.data
+            );
+            return { ...chat, avatar: null }; // Если не удалось получить аватар, возвращаем null
+          }
+        });
+
+        // Ждем завершения всех промисов
+        const chatsWithAvatars = await Promise.all(avatarPromises);
+
         const insertChats =
           "INSERT INTO chats (uniq, timestamp, data, w) VALUES (?,?,?,?)";
-        for (const chat of chats) {
+        for (const chat of chatsWithAvatars) {
           const unid = chat.lastMessage.id.remote;
           const timestamp = chat.timestamp;
           const data = JSON.stringify(chat);
@@ -45,7 +78,7 @@ router.post("/api/getChats", async (req, res) => {
         return res.status(200).json({
           message: "Чаты успешно добавлены.",
           data: {
-            chats: chats.map((chat) => JSON.stringify(chat)), // Преобразование данных
+            chats: chatsWithAvatars.map((chat) => JSON.stringify(chat)), // Преобразование данных
           },
         });
       } catch (apiError) {
