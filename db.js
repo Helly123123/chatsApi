@@ -5,8 +5,8 @@ const mysql = require("mysql2");
 const pool = mysql.createPool({
   host: "localhost",
   user: "root",
-  // password: "68b329da9893e34099c7",
-  password: "root",
+  password: "68b329da9893e34099c7",
+  // password: "root",
   database: "chats",
   port: 3306,
 });
@@ -48,6 +48,7 @@ const createTables = (connection) => {
       id INT AUTO_INCREMENT PRIMARY KEY,
       uniq VARCHAR(255) NOT NULL,
       timestamp TEXT,
+      newMessage INT,
       data JSON NOT NULL,
       w VARCHAR(255),
       u VARCHAR(255)

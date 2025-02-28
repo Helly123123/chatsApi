@@ -67,18 +67,42 @@ router.post("/api/getChats", async (req, res) => {
         const chatsWithAvatars = await Promise.all(avatarPromises);
 
         const insertChats =
-          "INSERT INTO chats (uniq, timestamp, data, w) VALUES (?,?,?,?)";
+          "INSERT INTO chats (uniq, timestamp, newMessage, data, w) VALUES (?,?,?,?,?)";
         for (const chat of chatsWithAvatars) {
           const unid = chat.lastMessage.id.remote;
           const timestamp = chat.timestamp;
+          const newMessage = chat.unreadCount;
           const data = JSON.stringify(chat);
-          await pool.query(insertChats, [unid, timestamp, data, "c"]);
+          await pool.query(insertChats, [
+            unid,
+            timestamp,
+            newMessage,
+            data,
+            "c",
+          ]);
         }
 
+        // Запрос к базе данных для получения данных по unid
+        const dbResults = await checkDb("getChats", unid);
+
+        const responseData = dbResults.map((item) => {
+          const dataParse = JSON.parse(item.data);
+          // const dataParse = item.data;
+          return {
+            id: item.id,
+            newMessage: item.newMessage,
+            timestamp: item.timestamp,
+            u: item.u,
+            uniq: item.uniq,
+            w: item.w,
+            data: dataParse,
+          };
+        });
+
         return res.status(200).json({
-          message: "Чаты успешно добавлены.",
+          message: "Чаты уже существуют.",
           data: {
-            chats: chatsWithAvatars.map((chat) => JSON.stringify(chat)), // Преобразование данных
+            chats: responseData,
           },
         });
       } catch (apiError) {
@@ -99,10 +123,26 @@ router.post("/api/getChats", async (req, res) => {
         await pool.query(updateWQuery, [chatId]);
       }
 
+      const responseData = results.map((item) => {
+        // const dataParse = item.data;
+        const dataParse = JSON.parse(item.data);
+        // const parseData = JSON.parse(dataParse);
+        const parseData = dataParse;
+        return {
+          id: item.id,
+          newMessage: item.newMessage,
+          timestamp: item.timestamp,
+          u: item.u,
+          uniq: item.uniq,
+          w: item.w,
+          data: parseData,
+        };
+      });
+
       return res.status(200).json({
         message: "Чаты уже существуют.",
         data: {
-          chats: results.map((chat) => chat.data), // Преобразование данных из базы
+          chats: responseData,
         },
       });
     }

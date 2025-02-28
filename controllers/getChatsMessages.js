@@ -65,8 +65,10 @@ router.post("/api/getChatMessages", async (req, res) => {
         data JSON NOT NULL,
         w VARCHAR(255),
         u VARCHAR(255),
+        replyTo VARCHAR(255),
         state TINYINT(1) DEFAULT 0,  
-        reaction VARCHAR(255) DEFAULT NULL
+        reaction VARCHAR(255) DEFAULT NULL,
+         \`delete\` BOOLEAN DEFAULT FALSE
 );`;
 
       await pool.query(createTableQuery);
@@ -74,7 +76,7 @@ router.post("/api/getChatMessages", async (req, res) => {
         `Таблица '${sanitizedTableName}' успешно создана или уже существует.`
       );
 
-      const insertChat = `INSERT INTO \`${sanitizedTableName}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?) 
+      const insertChat = `INSERT INTO \`${sanitizedTableName}\` (uniq, timestamp, data, replyTo, w) VALUES (?, ?, ?, ?, ?) 
                     ON DUPLICATE KEY UPDATE 
                     timestamp = VALUES(timestamp), 
                     data = VALUES(data), 
@@ -82,19 +84,20 @@ router.post("/api/getChatMessages", async (req, res) => {
                           WHEN w IS NULL THEN 'm' 
                           ELSE CONCAT(w, ',', 'm') 
                         END`;
-
+      console.log(messages.replyTo);
       for (const message of messages) {
         const unid = message.item; // Уникальный идентификатор сообщения
         const data = JSON.stringify({
           ...message,
-          state: false,
+          state: "delivered",
           reaction: "",
           send: "",
         });
         const timestamp = message.time;
+        const replyTo = message.replyTo;
 
         // Выполняем вставку или обновление
-        await pool.query(insertChat, [unid, timestamp, data, "m"]);
+        await pool.query(insertChat, [unid, timestamp, data, replyTo, "m"]);
       }
 
       // Извлекаем сообщения из БД
@@ -102,16 +105,30 @@ router.post("/api/getChatMessages", async (req, res) => {
       const [messagesFromDb] = await pool.query(query);
       console.log("Сообщения из БД:", messagesFromDb);
 
-      // Изменяем порядок сообщений на обратный
-      const reversedMessages = messagesFromDb
-        .reverse()
-        .map((message) => message.data); // Парсим данные
+      const sortedMessages = messagesFromDb.sort(
+        (a, b) => a.timestamp - b.timestamp
+      );
+
+      const parsedMessages = sortedMessages.map((message) => ({
+        id: message.id,
+        newMessages: message.newMessages,
+        timestamp: message.timestamp,
+        u: message.u,
+        uniq: message.uniq,
+        w: message.w,
+        reaction: message.reaction,
+        delete:
+          message.delete === 1 ? true : message.delete === 0 ? false : null,
+        // data: JSON.parse(message.data || "{}"),
+        data: message.data,
+      }));
 
       // Отправляем ответ в формате JSON
       return res.status(200).json({
         ok: true,
         data: {
-          messages: reversedMessages, // Отправляем сообщения в обратном порядке
+          // messages: parsedMessages,
+          messages: JSON.parse(parsedMessages),
         },
       });
     } else {
@@ -161,16 +178,32 @@ router.post("/api/getChatMessages", async (req, res) => {
       const [messagesFromDb] = await pool.query(query);
       console.log("Сообщения из БД:", messagesFromDb);
 
-      // Изменяем порядок сообщений на обратный
-      const reversedMessages = messagesFromDb
-        .reverse()
-        .map((message) => message.data); // Парсим данные
+      // Изменяем порядок сообщений на прямой (по возрастанию)
+      const sortedMessages = messagesFromDb.sort(
+        (a, b) => a.timestamp - b.timestamp
+      );
 
+      // Если нужно распарсить данные из поля `data`, можно сделать это с помощью .map()
+      const parsedMessages = sortedMessages.map((message) => ({
+        id: message.id,
+        newMessages: message.newMessages,
+        timestamp: message.timestamp,
+        u: message.u,
+        uniq: message.uniq,
+        w: message.w,
+        reaction: message.reaction,
+        delete:
+          message.delete === 1 ? true : message.delete === 0 ? false : null,
+        // data: JSON.parse(message.data || "{}"),
+        data: message.data,
+      }));
+      console.log(parsedMessages);
       // Отправляем ответ в формате JSON
       return res.status(200).json({
         ok: true,
         data: {
-          messages: reversedMessages, // Отправляем сообщения в обратном порядке
+          // messages: parsedMessages,
+          messages: JSON.parse(parsedMessages),
         },
       });
     }

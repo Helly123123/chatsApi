@@ -11,6 +11,8 @@ const sendMessage = require("./controllers/sendMessage");
 const createUserRoutes = require("./controllers/getChats");
 const selectInfoFromDb = require("./controllers/infoFromDb");
 const dataRouter = require("./controllers/intoMessageFromDb");
+const deleteMessage = require("./controllers/deleteMessage");
+const clearMessages = require("./controllers/clearAllNewMessages");
 const multer = require("multer");
 
 // Middleware
@@ -21,6 +23,8 @@ app.use(getChatMessages);
 app.use(sendMessage);
 app.use(createUserRoutes);
 app.use(selectInfoFromDb);
+app.use(clearMessages);
+app.use(deleteMessage);
 app.use("/api", dataRouter);
 
 // Настройка хранилища для загрузки файлов

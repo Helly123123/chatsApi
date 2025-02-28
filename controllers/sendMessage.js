@@ -30,6 +30,7 @@ router.post("/api/sendMessage", async (req, res) => {
       const unid = results[0].result.thread;
       const item = results[0].result.item;
       console.log("Статус OK, получен unid:", unid);
+      console.log(msg.replyTo);
       const messageData = {
         to: msg.to,
         from: "79198670001", // или другое значение
@@ -39,12 +40,12 @@ router.post("/api/sendMessage", async (req, res) => {
         source: "whatsapp",
         thread: unid,
         content: msg.content,
-        replyTo: null,
+        replyTo: msg.replyTo,
         outgoing: msg.outgoing,
         state: "sendMessage",
         reaction: "",
       };
-      // Проверка существования чата
+
       const query = `SELECT * FROM chats WHERE uniq = ?`;
       // *** Используем async/await напрямую с pool.query ***
       const [chatResults] = await pool.query(query, [unid]); //  Деструктуризация результата
@@ -71,15 +72,13 @@ router.post("/api/sendMessage", async (req, res) => {
           console.log("res", results);
 
           // Вставка данных в таблицу
-          const insertChat = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
+          const insertChat = `INSERT INTO \`${unid}\` (uniq, timestamp, data, replyTo, w) VALUES (?, ?, ?, ?)`;
 
           try {
             const [insertResult] = await pool.query(insertChat, [
               item,
               results[0].result.timestamp,
-              JSON.stringify({
-                messageData,
-              }),
+              JSON.stringify(messageData),
               "s",
             ]);
             console.log("Данные успешно вставлены:", insertResult);
@@ -100,7 +99,8 @@ router.post("/api/sendMessage", async (req, res) => {
               timestamp VARCHAR(255) NOT NULL,
               data JSON NOT NULL,
               W VARCHAR(255),
-              U VARCHAR(255)
+              U VARCHAR(255),
+              \`delete\` BOOLEAN DEFAULT FALSE
           );`;
           try {
             const [createResult] = await pool.query(createTableQuery);
@@ -142,7 +142,7 @@ router.post("/api/sendMessage", async (req, res) => {
         source: "whatsapp",
         thread: mUniq,
         content: errorMessage.content,
-        replyTo: null,
+        replyTo: errorMessage.replyTo,
         state: "error",
         reaction: "",
         outgoing: errorMessage.outgoing,
@@ -156,9 +156,7 @@ router.post("/api/sendMessage", async (req, res) => {
           const [insertResult] = await pool.query(insertChat, [
             errorMessage.item,
             errorMessage.timestamp,
-            JSON.stringify({
-              errorMessageData,
-            }),
+            JSON.stringify(errorMessageData),
             "s",
           ]);
           console.log("Данные успешно вставлены:", insertResult);
@@ -179,7 +177,8 @@ router.post("/api/sendMessage", async (req, res) => {
             timestamp VARCHAR(255) NOT NULL,
             data JSON NOT NULL,
             W VARCHAR(255),
-            U VARCHAR(255)
+            U VARCHAR(255),
+            \`delete\` BOOLEAN DEFAULT FALSE
         );`;
         try {
           const [createResult] = await pool.query(createTableQuery);
