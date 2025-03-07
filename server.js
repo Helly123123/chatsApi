@@ -2,7 +2,7 @@ const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 const axios = require("axios");
-const { pool, checkAndCreateDatabase, checkDb } = require("./db"); // Импортируем функции
+const { connectToDatabase, fetchDataFromAllDatabases } = require("./db"); // Импортируем функции
 const app = express();
 const port = 4000;
 const apiRoutes = require("./routes/apiRoutes");
@@ -14,7 +14,7 @@ const dataRouter = require("./controllers/intoMessageFromDb");
 const deleteMessage = require("./controllers/deleteMessage");
 const clearMessages = require("./controllers/clearAllNewMessages");
 const multer = require("multer");
-
+const { setGlobalTableName } = require("./globals");
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -87,6 +87,28 @@ const sendToClients = (message) => {
 // Пример маршрута для SSE
 app.get("/sse", sseHandler);
 
+app.post("/api/connect", async (req, res) => {
+  const { source, login, token, tableName } = req.body;
+  try {
+    const connection = await connectToDatabase(source, login, token);
+    setGlobalTableName(tableName);
+
+    // Получаем данные из всех баз данных и ждем результат
+    const data = await fetchDataFromAllDatabases(source, login, token);
+    console.log("Данные из всех баз данных:", data);
+
+    // Отправляем ответ только один раз
+    res.status(200).json({
+      message: "Подключение успешно",
+      dbName: `${source}_${login}_${token}`,
+      tableName,
+    });
+  } catch (error) {
+    console.error("Ошибка:", error);
+    res.status(500).json({ error: error.message }); // Отправляем ответ в случае ошибки
+  }
+});
+
 // Пример функции, которая будет отправлять сообщения
 app.post("/send-message", (req, res) => {
   const message = req.body.message;
@@ -113,7 +135,7 @@ app.post("/send-message", (req, res) => {
 });
 
 // Проверка и создание базы данных
-checkAndCreateDatabase();
+// checkAndCreateDatabase();
 
 // Запуск сервера
 app.listen(port, () => {

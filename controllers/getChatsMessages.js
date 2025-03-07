@@ -2,16 +2,17 @@ const axios = require("axios");
 const { pool } = require("../db"); // Импортируйте ваш pool для работы с БД
 const express = require("express");
 const router = express.Router();
-
+const { getGlobalTableName, setGlobalTableName } = require("../globals");
+const globalName = getGlobalTableName();
 router.post("/api/getChatMessages", async (req, res) => {
   const { source, token, login, to, uniq } = req.body;
-  console.log("Получен uniq:", uniq); // Логируем полученный идентификатор чата
-
+  console.log("Получен uniq:", uniq, login, to); // Логируем полученный идентификатор чата
+  await setGlobalTableName(`${source}_${login}_token`);
   try {
     // Проверяем, существует ли таблица для чатов
     const [results] = await pool.query(
       "SELECT COUNT(*) AS table_exists FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
-      ["chats", uniq]
+      [globalName, uniq]
     );
 
     console.log("Существование таблицы:", results[0].table_exists);
@@ -128,7 +129,7 @@ router.post("/api/getChatMessages", async (req, res) => {
         ok: true,
         data: {
           // messages: parsedMessages,
-          messages: JSON.parse(parsedMessages),
+          messages: parsedMessages,
         },
       });
     } else {
@@ -148,7 +149,6 @@ router.post("/api/getChatMessages", async (req, res) => {
         }
       );
 
-      // Проверяем статус ответа
       if (response.status === 401) {
         return res
           .status(401)
@@ -203,7 +203,7 @@ router.post("/api/getChatMessages", async (req, res) => {
         ok: true,
         data: {
           // messages: parsedMessages,
-          messages: JSON.parse(parsedMessages),
+          messages: parsedMessages,
         },
       });
     }
