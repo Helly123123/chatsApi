@@ -30,7 +30,6 @@ const webhook = async (req, res) => {
   // Проверка типа хука
   if (hook_type === "message") {
     await handleMessageSendStatusHook(body);
-
     await handleMessageHook(body, thread, item, time, to);
   } else if (hook_type === "message_status") {
     await handleMessageStatusHook(body);
@@ -69,7 +68,6 @@ const handleMessageHook = async (body, thread, item, time, to) => {
       timestamp: time,
     };
 
-    // Обработка существующего чата
     if (chatExists.length > 0) {
       console.log(`Чат ${unid} существует. Проверяем существование таблицы...`);
       await getChatDataAndUpdate(unid, time, messageData.text);
@@ -90,7 +88,7 @@ async function getChatDataAndUpdate(uniq, timestamp, message) {
     const [rows] = await pool.query("SELECT data FROM chats WHERE uniq = ?", [
       uniq,
     ]);
-    const timestampInSeconds = Math.floor(timestamp / 1000);
+    const timestampInSeconds = Math.floor(timestamp / 10000);
     if (rows.length > 0) {
       console.log(rows);
       let dataParse = rows[0].data.replace(/^"|"$/g, "").replace(/\\/g, "");
@@ -99,11 +97,10 @@ async function getChatDataAndUpdate(uniq, timestamp, message) {
       // Обновляем lastMessage.body и timestamp
       data.lastMessage.body = message;
       data.timestamp = timestampInSeconds;
+      ы;
 
-      // Преобразуем обновленный объект обратно в строку JSON
       const updatedData = JSON.stringify(data);
 
-      // Сохраняем обновленные данные обратно в базу данных
       await pool.query("UPDATE chats SET data = ? WHERE uniq = ?", [
         updatedData,
         uniq,
@@ -333,6 +330,8 @@ const handleAddReactionHook = async (body) => {
 };
 
 const handleMessageSendStatusHook = async (body) => {
+  // await connectToDatabase(source, login, "token");
+  // await setGlobalTableName(`${source}_${login}_token`);
   const {
     from,
     to,

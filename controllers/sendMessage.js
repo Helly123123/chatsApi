@@ -6,13 +6,13 @@ const router = express.Router();
 
 router.post("/api/sendMessage", async (req, res) => {
   const { source, token, login, msg, mUniq, errorMessage } = req.body;
-  console.log("Получено сообщение:", msg);
+  console.log("Получено сообщение:", msg, login);
 
   try {
     // Отправка сообщения через внешний API
     const response = await axios.post(
       "https://b2288.apitter.com/instances/sendMessage",
-      { source, login, msg },
+      { source, login: login, msg },
       {
         headers: {
           Authorization: `Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5`,
@@ -30,10 +30,10 @@ router.post("/api/sendMessage", async (req, res) => {
       const unid = results[0].result.thread;
       const item = results[0].result.item;
       console.log("Статус OK, получен unid:", unid);
+      const sanitizedTableName = unid;
       console.log(msg.replyTo);
       const messageData = {
         to: msg.to,
-        from: "79198670001", // или другое значение
         item: results[0].result.item || "3A05B1DBFE70E35181EE", // пример значения
         text: msg.text,
         time: results[0].result.timestamp, // Пример времени
@@ -72,7 +72,7 @@ router.post("/api/sendMessage", async (req, res) => {
           console.log("res", results);
 
           // Вставка данных в таблицу
-          const insertChat = `INSERT INTO \`${unid}\` (uniq, timestamp, data, replyTo, w) VALUES (?, ?, ?, ?)`;
+          const insertChat = `INSERT INTO \`${unid}\` (uniq, timestamp, data, w) VALUES (?, ?, ?, ?)`;
 
           try {
             const [insertResult] = await pool.query(insertChat, [
@@ -135,7 +135,7 @@ router.post("/api/sendMessage", async (req, res) => {
       const tableExists = tableCheckResult[0].table_exists > 0;
       const errorMessageData = {
         to: errorMessage.to,
-        from: "79198670001", // или другое значение
+
         item: errorMessage.item, // пример значения
         text: errorMessage.text,
         time: errorMessage.timestamp, // Пример времени

@@ -20,10 +20,11 @@ router.post("/api/getChatMessages", async (req, res) => {
     // Если таблица не существует, получаем сообщения из API
     if (results[0].table_exists === 0) {
       console.log("Получение сообщений из API...");
-
+      console.log("Получаю сообщение", source, login, to);
+      const log = "log";
       const response = await axios.post(
         "https://b2288.apitter.com/instances/getChatMessages",
-        { source, login, to },
+        { source, login: "hellyxx", to },
         {
           headers: {
             Authorization: `Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5`,

@@ -6,7 +6,8 @@ const globalName = getGlobalTableName();
 const pool = mysql.createPool({
   host: "localhost",
   user: "root",
-  password: "root",
+  // password: "root",
+  password: "68b329da9893e34099c7",
   port: 3306,
 });
 
