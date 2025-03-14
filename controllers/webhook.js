@@ -1,15 +1,21 @@
 const express = require("express");
-const { pool } = require("../db");
+const { pool, connectToDatabase } = require("../db");
 const axios = require("axios"); // Импортируем axios для выполнения HTTP-запросов
 const app = express();
 app.use(express.json());
+const { setGlobalTableName, getGlobalTableName } = require("../globals");
 
+const globalTableNameDb = getGlobalTableName();
 const { sendSSE } = require("../routes/sse");
 
 // Функция для отправки сообщений клиентам SSE
 
 const webhook = async (req, res) => {
   const { body } = req;
+  const { login, token, source } = req.query;
+  connectToDatabase(source, login, "token");
+  console.log("Данные пользователя", login, token);
+  setGlobalTableName(`whatsapp_${login}_token`);
 
   // Логирование полученного вебхука
   console.log("Получен вебхук:", JSON.stringify(body, null, 2));
@@ -29,8 +35,20 @@ const webhook = async (req, res) => {
 
   // Проверка типа хука
   if (hook_type === "message") {
+    //      await connectToDatabase(source, login, "token")
+    //      await setGlobalTableName(`${source}_${login}_token`)
     await handleMessageSendStatusHook(body);
-    await handleMessageHook(body, thread, item, time, to);
+
+    await handleMessageHook(
+      body,
+      thread,
+      item,
+      time,
+      source,
+      login,
+      to,
+      outgoing
+    );
   } else if (hook_type === "message_status") {
     await handleMessageStatusHook(body);
   } else if (hook_type === "add_message_reaction") {
@@ -42,7 +60,18 @@ const webhook = async (req, res) => {
   return res.status(200).send("OK");
 };
 
-const handleMessageHook = async (body, thread, item, time, to) => {
+const handleMessageHook = async (
+  body,
+  thread,
+  item,
+  time,
+  source,
+  login,
+  to,
+  outgoing
+) => {
+  await connectToDatabase(source, login, "token");
+  await setGlobalTableName(`${source}_${login}_token`);
   const unid = thread; // Используем thread как уникальный идентификатор чата
   const chatCheckQuery = `SELECT * FROM chats WHERE uniq = ?`;
 
@@ -68,10 +97,19 @@ const handleMessageHook = async (body, thread, item, time, to) => {
       timestamp: time,
     };
 
+    // Обработка существующего чата
     if (chatExists.length > 0) {
       console.log(`Чат ${unid} существует. Проверяем существование таблицы...`);
       await getChatDataAndUpdate(unid, time, messageData.text);
-      await handleExistingChat(unid, messageData, chatsData, time);
+      await handleExistingChat(
+        unid,
+        messageData,
+        login,
+        source,
+        chatsData,
+        time,
+        outgoing
+      );
     } else {
       console.log(`Чат ${unid} не существует. Создаем новый чат...`);
       await handleNewChat(unid, messageData, chatsData, time);
@@ -88,7 +126,7 @@ async function getChatDataAndUpdate(uniq, timestamp, message) {
     const [rows] = await pool.query("SELECT data FROM chats WHERE uniq = ?", [
       uniq,
     ]);
-    const timestampInSeconds = Math.floor(timestamp / 10000);
+    const timestampInSeconds = Math.floor(timestamp / 1000000);
     if (rows.length > 0) {
       console.log(rows);
       let dataParse = rows[0].data.replace(/^"|"$/g, "").replace(/\\/g, "");
@@ -97,15 +135,16 @@ async function getChatDataAndUpdate(uniq, timestamp, message) {
       // Обновляем lastMessage.body и timestamp
       data.lastMessage.body = message;
       data.timestamp = timestampInSeconds;
-      ы;
 
+      // Преобразуем обновленный объект обратно в строку JSON
       const updatedData = JSON.stringify(data);
 
+      // Сохраняем обновленные данные обратно в базу данных
       await pool.query("UPDATE chats SET data = ? WHERE uniq = ?", [
         updatedData,
         uniq,
       ]);
-
+      console.log("даааааааааатаааааааааааачаааааааааааааатаааааааааааа");
       // Возвращаем обновленный объект data
       return data;
     } else {
@@ -148,27 +187,37 @@ async function changeMessageStatus(uniq, thread, content, item) {
   }
 }
 
-const handleExistingChat = async (unid, messageData, chatsData, time) => {
+const handleExistingChat = async (
+  unid,
+  messageData,
+  chatsData,
+  sourse,
+  login,
+  time,
+  outgoing
+) => {
   const tableCheckQuery = `
     SELECT COUNT(*) AS table_exists
     FROM information_schema.tables
     WHERE table_schema = ? AND table_name = ?`;
-  const [tableExists] = await pool.query(tableCheckQuery, ["chats", unid]);
-
+  const [tableExists] = await pool.query(tableCheckQuery, [
+    `whatsapp_${login}_token`,
+    unid,
+  ]);
+  console.log(globalTableNameDb);
   if (tableExists[0].table_exists > 0) {
     console.log(`Таблица ${unid} существует. Обновляем данные...`);
-
+    console.log(outgoing);
     // Сначала получаем текущее значение newMessage
     const getCurrentNewMessage = `SELECT newMessage FROM chats WHERE uniq = ?`;
-    const [currentMessageRows] = await pool.query(getCurrentNewMessage, [
-      messageData.item,
-    ]);
+    const [currentMessageRows] = await pool.query(getCurrentNewMessage, [unid]);
 
     let newMessageCount = 0;
 
     // Если запись существует, увеличиваем newMessage
     if (currentMessageRows.length > 0) {
       newMessageCount = currentMessageRows[0].newMessage + 1; // Увеличиваем на 1
+      console.log(currentMessageRows[0]);
     } else {
       // Если записи нет, начинаем с 1
       newMessageCount = 1;
@@ -185,10 +234,11 @@ const handleExistingChat = async (unid, messageData, chatsData, time) => {
 
     console.log("Данные сообщения успешно обновлены или вставлены.");
 
-    // Обновляем поле 'u' в таблице chats
-    const updateChatFieldU = `UPDATE chats SET u = ? WHERE uniq = ?`;
-    await pool.query(updateChatFieldU, ["h", unid]);
-    console.log("Поле 'u' успешно обновлено на 'h' для чата:", unid);
+    if (!outgoing) {
+      const updateChatFieldU = `UPDATE chats SET newMessage = ? WHERE uniq = ?`;
+      await pool.query(updateChatFieldU, [newMessageCount, unid]);
+      console.log("Поле 'u' успешно обновлено на 'h' для чата:", unid);
+    }
   } else {
     await createChatTableAndInsert(unid, messageData);
   }
@@ -328,10 +378,7 @@ const handleAddReactionHook = async (body) => {
     console.log("Тип хука не соответствует 'message', игнорируем.");
   }
 };
-
 const handleMessageSendStatusHook = async (body) => {
-  // await connectToDatabase(source, login, "token");
-  // await setGlobalTableName(`${source}_${login}_token`);
   const {
     from,
     to,

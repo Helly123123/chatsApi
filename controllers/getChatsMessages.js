@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { pool } = require("../db"); // Импортируйте ваш pool для работы с БД
+const { pool, connectToDatabase } = require("../db"); // Импортируйте ваш pool для работы с БД
 const express = require("express");
 const router = express.Router();
 const { getGlobalTableName, setGlobalTableName } = require("../globals");
@@ -7,12 +7,15 @@ const globalName = getGlobalTableName();
 router.post("/api/getChatMessages", async (req, res) => {
   const { source, token, login, to, uniq } = req.body;
   console.log("Получен uniq:", uniq, login, to); // Логируем полученный идентификатор чата
+  await connectToDatabase(source, login, "token");
+
   await setGlobalTableName(`${source}_${login}_token`);
+  const dbName = `${source}_${login}_token`;
   try {
     // Проверяем, существует ли таблица для чатов
     const [results] = await pool.query(
       "SELECT COUNT(*) AS table_exists FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
-      [globalName, uniq]
+      [dbName, uniq]
     );
 
     console.log("Существование таблицы:", results[0].table_exists);
@@ -24,7 +27,7 @@ router.post("/api/getChatMessages", async (req, res) => {
       const log = "log";
       const response = await axios.post(
         "https://b2288.apitter.com/instances/getChatMessages",
-        { source, login: "hellyxx", to },
+        { source, login, to },
         {
           headers: {
             Authorization: `Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5`,
@@ -68,7 +71,7 @@ router.post("/api/getChatMessages", async (req, res) => {
         w VARCHAR(255),
         u VARCHAR(255),
         replyTo VARCHAR(255),
-        state TINYINT(1) DEFAULT 0,  
+        state TINYINT(1) DEFAULT 0,
         reaction VARCHAR(255) DEFAULT NULL,
          \`delete\` BOOLEAN DEFAULT FALSE
 );`;
@@ -78,14 +81,14 @@ router.post("/api/getChatMessages", async (req, res) => {
         `Таблица '${sanitizedTableName}' успешно создана или уже существует.`
       );
 
-      const insertChat = `INSERT INTO \`${sanitizedTableName}\` (uniq, timestamp, data, replyTo, w) VALUES (?, ?, ?, ?, ?) 
-                    ON DUPLICATE KEY UPDATE 
-                    timestamp = VALUES(timestamp), 
-                    data = VALUES(data), 
-                    w = CASE 
-                          WHEN w IS NULL THEN 'm' 
-                          ELSE CONCAT(w, ',', 'm') 
-                        END`;
+      const insertChat = `INSERT INTO \`${sanitizedTableName}\` (uniq, timestamp, data, replyTo, w) VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+          timestamp = VALUES(timestamp),
+          data = VALUES(data),
+          w = CASE
+                WHEN w IS NULL THEN 'm'
+                ELSE CONCAT(w, ',', 'm')
+              END`;
       console.log(messages.replyTo);
       for (const message of messages) {
         const unid = message.item; // Уникальный идентификатор сообщения
@@ -122,7 +125,8 @@ router.post("/api/getChatMessages", async (req, res) => {
         delete:
           message.delete === 1 ? true : message.delete === 0 ? false : null,
         // data: JSON.parse(message.data || "{}"),
-        data: message.data,
+        // data: message.data,
+        data: JSON.parse(message.data),
       }));
 
       // Отправляем ответ в формате JSON
@@ -175,6 +179,7 @@ router.post("/api/getChatMessages", async (req, res) => {
       );
 
       // Получаем сообщения из БД
+      // Получаем сообщения из БД
       const query = `SELECT * FROM \`${sanitizedTableName}\` ORDER BY timestamp DESC`;
       const [messagesFromDb] = await pool.query(query);
       console.log("Сообщения из БД:", messagesFromDb);
@@ -196,7 +201,8 @@ router.post("/api/getChatMessages", async (req, res) => {
         delete:
           message.delete === 1 ? true : message.delete === 0 ? false : null,
         // data: JSON.parse(message.data || "{}"),
-        data: message.data,
+        // data: message.data,
+        data: JSON.parse(message.data),
       }));
       console.log(parsedMessages);
       // Отправляем ответ в формате JSON

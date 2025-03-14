@@ -55,43 +55,53 @@ router.post("/api/getChats", async (req, res) => {
               .json({ error: "Данные чатов не являются массивом." });
           }
           console.log(chats);
-          // const avatarPromises = chats.map(async (chat) => {
-          //   const to = chat.phone;
-          //   console.log(to);
-          //   const userInfoResponse = await axios.post(
-          //     "https://b2288.apitter.com/instances/getUserInfo",
-          //     { source, login: currentLogin, to },
-          //     {
-          //       headers: {
-          //         Authorization: `Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5`,
-          //       },
-          //     }
-          //   );
 
-          //   if (userInfoResponse.data.ok) {
-          //     return {
-          //       ...chat,
-          //       avatar: userInfoResponse.data.data.pictureUrl,
-          //       loginUser: currentLogin,
-          //     };
-          //   } else {
-          //     console.error(
-          //       "Ошибка при получении информации о пользователе:",
-          //       userInfoResponse.data
-          //     );
-          //     return { ...chat, avatar: null, loginUser: currentLogin };
-          //   }
-          // });
-          // const chatsWithAvatars = await Promise.all(avatarPromises);
+          const avatarPromises = chats.map(async (chat) => {
+            const to = chat.phone;
+            console.log(to);
+            try {
+              const userInfoResponse = await axios.post(
+                "https://b2288.apitter.com/instances/getUserInfo",
+                { source, login: currentLogin, to },
+                {
+                  headers: {
+                    Authorization: `Bearer 9bddaafd-2c8d-4840-96d5-1c19c0bb4bd5`,
+                  },
+                }
+              );
+
+              if (userInfoResponse.data.ok) {
+                return {
+                  ...chat,
+                  avatar: userInfoResponse.data.data.pictureUrl,
+                  loginUser: currentLogin,
+                };
+              } else {
+                console.error(
+                  "Ошибка при получении информации о пользователе:",
+                  userInfoResponse.data
+                );
+                return { ...chat, avatar: null, loginUser: currentLogin };
+              }
+            } catch (error) {
+              console.error(
+                "Ошибка при получении информации о пользователе:",
+                error
+              );
+              return { ...chat, avatar: null, lologinUsergin: currentLogin }; // Записываем avatar null в случае ошибки
+            }
+          });
+
+          const chatsWithAvatars = await Promise.all(avatarPromises);
 
           const insertChats =
             "INSERT INTO chats (uniq, timestamp, newMessage, data, w) VALUES (?,?,?,?,?)";
-          for (const chat of chats) {
+          for (const chat of chatsWithAvatars) {
             const unid = chat.lastMessage ? chat.lastMessage.id.remote : null; // Проверка на существование lastMessage
             const timestamp = chat.timestamp;
             const newMessage = chat.unreadCount;
             const data = JSON.stringify({
-              ...chat,
+              ...chat, // Используем текущий чат, а не chatsWithAvatars
               loginUser: currentLogin,
             });
 
@@ -109,24 +119,30 @@ router.post("/api/getChats", async (req, res) => {
             }
           }
 
-          // Заменяем вызов checkDb на запрос к базе данных
-          // const [currentDbResults] = await pool.query("SELECT * FROM chats");
+          const [currentDbResults] = await pool.query("SELECT * FROM chats");
 
-          // const responseData = currentDbResults.map((item) => {
-          //   const dataParse = item.data;
-          //   return {
-          //     id: item.id,
-          //     newMessage: item.newMessage,
-          //     timestamp: item.timestamp,
-          //     u: item.u,
-          //     uniq: item.uniq,
-          //     w: item.w,
-          //     data: dataParse,
-          //   };
-          // });
+          const responseData = currentDbResults.map((item) => {
+            const dataParse = item.data;
+            return {
+              id: item.id,
+              newMessage: item.newMessage,
+              timestamp: item.timestamp,
+              u: item.u,
+              uniq: item.uniq,
+              w: item.w,
+              // data: dataParse,
+              data: JSON.parse(dataParse),
+            };
+          });
 
-          allChatsData.push(...chats); // Добавляем данные текущего логина в общий массив
-          // allChatsData.push(...re); // Добавляем данные текущего логина в общий массив
+          allChatsData.push(...responseData); // Добавляем данные текущего логина в общий массив
+
+          return res.status(200).json({
+            message: "Данные чатов успешно получены.",
+            data: {
+              chats: allChatsData,
+            },
+          });
         } catch (apiError) {
           console.error("Ошибка при запросе к API:", apiError.message);
           return res.status(500).json({ error: "Ошибка при запросе к API." });
@@ -155,7 +171,8 @@ router.post("/api/getChats", async (req, res) => {
             u: item.u,
             uniq: item.uniq,
             w: item.w,
-            data: dataParse,
+            data: JSON.parse(dataParse),
+            // data: dataParse,
           };
         });
 

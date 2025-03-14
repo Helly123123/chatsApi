@@ -1,14 +1,14 @@
 const mysql = require("mysql2/promise");
 const { getGlobalTableName } = require("./globals");
+require("dotenv").config();
 
 const globalName = getGlobalTableName();
 // Настройка пула соединений
 const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  // password: "root",
-  password: "68b329da9893e34099c7",
-  port: 3306,
+  host: process.env.MYSQL_HOST,
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  port: process.env.MYSQL_PORT,
 });
 
 const connectToDatabase = async (source, login, token) => {
